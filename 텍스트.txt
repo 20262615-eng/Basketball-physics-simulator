@@ -1,0 +1,2223 @@
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>역학과 에너지: 3D 포물선 운동 농구 시뮬레이터</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js (3D 렌더링 엔진) 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts: Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+        /* 커스텀 슬라이더 스타일 */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #f97316;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 999px;
+        }
+        /* 3D 캔버스 반응형 컨테이너 */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 440px;
+            cursor: grab;
+        }
+        .canvas-container:active {
+            cursor: grabbing;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.75rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 상단 헤더 -->
+    <header class="bg-slate-800/90 border-b border-slate-700 px-4 py-3 sm:px-6 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 backdrop-blur-md">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M5.6 5.6c3.5 3.5 3.5 9.3 0 12.8M18.4 5.6c-3.5 3.5-3.5 9.3 0 12.8M2 12h20M12 2v20"/>
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">3D 포물선 운동 농구 시뮬레이터</h1>
+                    <span class="px-2 py-0.5 text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded-full">3D MODE</span>
+                </div>
+                <p class="text-xs text-slate-400">물리학Ⅰ · 역학과 에너지 (3D 궤적 꼬리 시각화 및 역학적 에너지 보존 탐구)</p>
+            </div>
+        </div>
+
+        <!-- 물리 상수 배지 -->
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="px-2.5 py-1 rounded-lg bg-slate-700/80 text-slate-300 border border-slate-600 font-mono">
+                질량 m = 0.62 kg
+            </span>
+            <span class="px-2.5 py-1 rounded-lg bg-slate-700/80 text-slate-300 border border-slate-600 font-mono">
+                중력가속도 g = 9.8 m/s²
+            </span>
+            <span class="px-2.5 py-1 rounded-lg bg-slate-700/80 text-amber-300 border border-amber-500/30 font-mono">
+                골대 높이 H = 3.05 m
+            </span>
+        </div>
+    </header>
+
+    <!-- 메인 대시보드 레이아웃 -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        
+        <!-- 좌측/상단: 3D 시뮬레이션 뷰포트 및 컨트롤 바 (7~8칸) -->
+        <div class="lg:col-span-7 xl:col-span-8 flex flex-col gap-4">
+            
+            <!-- 3D 시뮬레이션 뷰포트 카드 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-2 sm:p-3 shadow-xl flex-1 flex flex-col relative">
+                
+                <!-- 상단 오버레이 툴바 (시각화 옵션, 카메라 시점, 배속) -->
+                <div class="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 text-xs">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white">
+                            <input type="checkbox" id="toggleTrail" checked class="rounded accent-orange-500 w-4 h-4">
+                            <span>공 꼬리 자취 (<span class="text-orange-400 font-semibold">Trail</span>)</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white">
+                            <input type="checkbox" id="toggleVectors" checked class="rounded accent-orange-500 w-4 h-4">
+                            <span>3D 속도 벡터 (<span class="text-emerald-400 font-mono">vₓ</span>, <span class="text-sky-400 font-mono">vᵧ</span>, <span class="text-amber-400 font-mono">v</span>)</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white">
+                            <input type="checkbox" id="toggleAimGuide" checked class="rounded accent-orange-500 w-4 h-4">
+                            <span>예측 궤적</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white">
+                            <input type="checkbox" id="toggleApexMarker" checked class="rounded accent-orange-500 w-4 h-4">
+                            <span>최고점</span>
+                        </label>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- 3D 카메라 뷰 프리셋 -->
+                        <div class="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-700">
+                            <span class="text-slate-400 px-1">시점:</span>
+                            <button data-cam="quarter" class="cam-btn px-2 py-0.5 rounded bg-sky-600 text-white font-semibold transition">3D 쿼터뷰</button>
+                            <button data-cam="side" class="cam-btn px-2 py-0.5 rounded text-slate-300 hover:bg-slate-700 transition">측면(분석)</button>
+                            <button data-cam="shooter" class="cam-btn px-2 py-0.5 rounded text-slate-300 hover:bg-slate-700 transition">슈터 뒤</button>
+                        </div>
+
+                        <!-- 재생 속도 조절 -->
+                        <div class="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-700">
+                            <span class="text-slate-400 px-1">배속:</span>
+                            <button data-speed="0.25" class="speed-btn px-2 py-0.5 rounded text-slate-300 hover:bg-slate-700 transition">0.25x</button>
+                            <button data-speed="0.5" class="speed-btn px-2 py-0.5 rounded text-slate-300 hover:bg-slate-700 transition">0.5x</button>
+                            <button data-speed="1.0" class="speed-btn px-2 py-0.5 rounded bg-orange-500 text-white font-semibold transition">1.0x</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3D 캔버스 영역 -->
+                <div class="canvas-container flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-700/80 relative" id="canvasWrapper">
+                    <canvas id="simCanvas"></canvas>
+                    
+                    <!-- 득점/상태 메시지 배너 -->
+                    <div id="statusBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full font-bold text-sm sm:text-base shadow-lg backdrop-blur-md transition-all duration-300 pointer-events-none">
+                    </div>
+
+                    <!-- 실시간 시간 및 구역 표시 오버레이 -->
+                    <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-sm border border-slate-700/80 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-200 pointer-events-none flex items-center gap-2.5">
+                        <span>경과 시간 <span id="overlayTime" class="text-orange-400 font-bold text-sm">0.00</span> s</span>
+                        <span class="text-slate-600">|</span>
+                        <span id="overlayZoneBadge" class="text-amber-300 font-sans font-semibold">자유투 라인 (4.60m)</span>
+                    </div>
+
+                    <!-- 3D 최고점/거리 뱃지 -->
+                    <div id="apexBadge" class="absolute top-3 right-3 bg-purple-950/80 backdrop-blur-sm border border-purple-500/40 px-2.5 py-1 rounded-lg text-xs font-mono text-purple-200 pointer-events-none">
+                        이론 최고점: <span id="overlayApexVal" class="font-bold text-purple-300">0.00 m</span>
+                    </div>
+
+                    <!-- 3D 카메라 조작 안내 힌트 -->
+                    <div class="absolute bottom-2 right-3 bg-slate-900/75 backdrop-blur-sm border border-slate-700/70 px-2.5 py-1 rounded-md text-[11px] text-slate-300 pointer-events-none hidden sm:block">
+                        🕹️ 조이스틱/WASD: 코트 이동 · 드래그: 시점 회전 · 휠: 줌
+                    </div>
+
+                    <!-- ★ 가상 아날로그 조이스틱 (캐릭터 코트 자유 이동 + 골대 자동 좌우 정렬) -->
+                    <div id="joystickArea" class="absolute bottom-3 left-3 z-10 flex flex-col items-center select-none touch-none">
+                        <div id="joystickBase" class="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900/75 backdrop-blur-md border-2 border-slate-600/80 shadow-xl relative flex items-center justify-center cursor-pointer">
+                            <!-- 십자 방향 가이드 -->
+                            <div class="w-full h-[1px] bg-slate-700/60 absolute"></div>
+                            <div class="h-full w-[1px] bg-slate-700/60 absolute"></div>
+                            <!-- 조이스틱 노브 -->
+                            <div id="joystickKnob" class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-orange-400 to-amber-600 border-2 border-white/80 shadow-lg shadow-orange-500/40 pointer-events-none transition-transform duration-75"></div>
+                        </div>
+                        <span class="mt-1 px-2 py-0.5 rounded bg-slate-900/80 text-[10px] font-medium text-slate-300 border border-slate-700/70">
+                            이동 조이스틱 (WASD)
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 하단 메인 액션 버튼 바 -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+                    <button id="btnLaunch" class="col-span-2 sm:col-span-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-[0.98] text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-orange-500/25 transition flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+                        <span>슛 쏘기 (Launch)</span>
+                    </button>
+                    <button id="btnPause" class="bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-white font-semibold py-2.5 px-3 rounded-xl border border-slate-600 transition flex items-center justify-center gap-1.5 disabled:opacity-40" disabled>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                        <span id="pauseText">일시정지</span>
+                    </button>
+                    <button id="btnStep" class="bg-slate-700 hover:bg-slate-600 active:scale-[0.98] text-slate-200 font-semibold py-2.5 px-3 rounded-xl border border-slate-600 transition flex items-center justify-center gap-1.5 disabled:opacity-40" disabled title="일시정지 상태에서 0.02초씩 정밀 이동">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                        <span>프레임 탐색</span>
+                    </button>
+                    <button id="btnReset" class="bg-slate-700/70 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40 active:scale-[0.98] text-slate-300 font-semibold py-2.5 px-3 rounded-xl border border-slate-600 transition flex items-center justify-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <span>초기화</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 발사 조건 제어 패널 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-xl">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                        발사 조건 및 슈팅 거리 설정
+                    </h2>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-300 bg-slate-900/70 px-2.5 py-1 rounded-lg border border-slate-700">
+                        <input type="checkbox" id="toggleAutoAimPreset" checked class="rounded accent-orange-500 w-3.5 h-3.5">
+                        <span>거리 선택 시 추천 속력/각도 자동 적용</span>
+                    </label>
+                </div>
+
+                <!-- 원클릭 코트 거리 프리셋 바 -->
+                <div class="mb-4 bg-slate-900/70 p-2.5 rounded-xl border border-slate-700/70">
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 mb-2 px-0.5">
+                        <span>📍 농구 코트 규격 거리 프리셋 (원클릭 이동)</span>
+                        <span id="activeZoneDesc" class="text-orange-400 font-semibold">자유투 라인 (4.60m)</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5" id="distancePresetGroup">
+                        <button type="button" data-dist="1.50" data-angle="62.0" data-speed="6.2" data-name="골밑 / 레이업" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex flex-col items-center">
+                            <span class="font-bold">골밑 슛</span>
+                            <span class="text-[10px] font-mono text-slate-400">1.50 m</span>
+                        </button>
+                        <button type="button" data-dist="4.60" data-angle="52.0" data-speed="7.6" data-name="자유투 라인" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-500 transition flex flex-col items-center">
+                            <span class="font-bold">자유투</span>
+                            <span class="text-[10px] font-mono text-orange-200/80">4.60 m</span>
+                        </button>
+                        <button type="button" data-dist="5.50" data-angle="51.0" data-speed="8.2" data-name="미드레인지" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex flex-col items-center">
+                            <span class="font-bold">미드레인지</span>
+                            <span class="text-[10px] font-mono text-slate-400">5.50 m</span>
+                        </button>
+                        <button type="button" data-dist="6.75" data-angle="50.0" data-speed="8.9" data-name="FIBA 3점슛" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex flex-col items-center">
+                            <span class="font-bold">FIBA 3점</span>
+                            <span class="text-[10px] font-mono text-slate-400">6.75 m</span>
+                        </button>
+                        <button type="button" data-dist="7.24" data-angle="49.5" data-speed="9.2" data-name="NBA 3점슛" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex flex-col items-center">
+                            <span class="font-bold">NBA 3점</span>
+                            <span class="text-[10px] font-mono text-slate-400">7.24 m</span>
+                        </button>
+                        <button type="button" data-dist="14.00" data-angle="47.0" data-speed="12.3" data-name="하프라인 슛" class="preset-dist-btn text-xs py-2 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex flex-col items-center">
+                            <span class="font-bold">하프라인</span>
+                            <span class="text-[10px] font-mono text-slate-400">14.00 m</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- 1. 골대까지 수평 거리 -->
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-orange-500/30">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label for="inputDistance" class="text-xs font-semibold text-orange-300">골대 중심까지 거리 (D)</label>
+                            <div class="flex items-center gap-1">
+                                <button type="button" id="btnDistMinus" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono text-slate-200 active:scale-95" title="0.1m 감소">-0.1</button>
+                                <input type="number" id="numDistance" min="1.0" max="15.0" step="0.05" value="4.60" class="w-16 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-right text-xs font-mono text-orange-400 font-bold focus:outline-none focus:border-orange-500">
+                                <span class="text-xs text-slate-400">m</span>
+                                <button type="button" id="btnDistPlus" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono text-slate-200 active:scale-95" title="0.1m 증가">+0.1</button>
+                            </div>
+                        </div>
+                        <input type="range" id="inputDistance" min="1.0" max="15.0" step="0.05" value="4.60" class="w-full">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                            <span>1.0m (골밑)</span>
+                            <span>4.6m(자유투)</span>
+                            <span>6.75m(3점)</span>
+                            <span>15.0m</span>
+                        </div>
+                    </div>
+
+                    <!-- 2. 발사 각도 -->
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/60">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label for="inputAngle" class="text-xs font-medium text-slate-300">발사 각도 (θ)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="numAngle" min="15" max="85" step="0.5" value="52" class="w-16 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-right text-xs font-mono text-orange-400 font-bold focus:outline-none focus:border-orange-500">
+                                <span class="text-xs text-slate-400">°</span>
+                            </div>
+                        </div>
+                        <input type="range" id="inputAngle" min="15" max="85" step="0.5" value="52" class="w-full">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                            <span>15° (낮은 탄도)</span>
+                            <span>45°</span>
+                            <span>85° (고각)</span>
+                        </div>
+                    </div>
+
+                    <!-- 3. 초기 발사 속력 -->
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/60">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label for="inputSpeed" class="text-xs font-medium text-slate-300">초기 발사 속력 (v₀)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="numSpeed" min="0" max="16.0" step="0.1" value="7.6" class="w-16 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-right text-xs font-mono text-orange-400 font-bold focus:outline-none focus:border-orange-500">
+                                <span class="text-xs text-slate-400">m/s</span>
+                            </div>
+                        </div>
+                        <input type="range" id="inputSpeed" min="0" max="16.0" step="0.1" value="7.6" class="w-full">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                            <span>0.0 m/s (자유낙하)</span>
+                            <span>8.0 m/s</span>
+                            <span>16.0 m/s</span>
+                        </div>
+                    </div>
+
+                    <!-- 4. 타점 (릴리스 높이) -->
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/60">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label for="inputHeight" class="text-xs font-medium text-slate-300">타점 / 릴리스 높이 (h₀)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="numHeight" min="0.2" max="3.5" step="0.05" value="2.10" class="w-16 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-right text-xs font-mono text-orange-400 font-bold focus:outline-none focus:border-orange-500">
+                                <span class="text-xs text-slate-400">m</span>
+                            </div>
+                        </div>
+                        <input type="range" id="inputHeight" min="0.2" max="3.5" step="0.05" value="2.10" class="w-full">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                            <span>0.2m (바닥)</span>
+                            <span>2.1m (점프슛)</span>
+                            <span>3.5m</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 우측/하단: 실시간 역학적 에너지 및 운동학 대시보드 (4~5칸) -->
+        <div class="lg:col-span-5 xl:col-span-4 flex flex-col gap-4">
+            
+            <!-- 1. 실시간 역학적 에너지 분석 카드 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        실시간 역학적 에너지 분석
+                    </h2>
+                    <span class="text-[11px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
+                        E = Eₖ + Eₚ
+                    </span>
+                </div>
+
+                <!-- 3대 에너지 수치 카드 -->
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <div class="bg-slate-900/90 border border-rose-500/30 rounded-xl p-2.5 text-center">
+                        <div class="text-[11px] text-rose-300 font-medium">운동 에너지 (Eₖ)</div>
+                        <div class="text-xs text-slate-400 font-mono mb-1">½mv²</div>
+                        <div id="valEk" class="text-base sm:text-lg font-bold font-mono text-rose-400">0.00 <span class="text-xs font-normal">J</span></div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-sky-500/30 rounded-xl p-2.5 text-center">
+                        <div class="text-[11px] text-sky-300 font-medium">퍼텐셜 에너지 (Eₚ)</div>
+                        <div class="text-xs text-slate-400 font-mono mb-1">mgh</div>
+                        <div id="valEp" class="text-base sm:text-lg font-bold font-mono text-sky-400">0.00 <span class="text-xs font-normal">J</span></div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-2.5 text-center">
+                        <div class="text-[11px] text-emerald-300 font-medium">역학적 에너지 (E)</div>
+                        <div class="text-xs text-slate-400 font-mono mb-1">Eₖ + Eₚ</div>
+                        <div id="valEtot" class="text-base sm:text-lg font-bold font-mono text-emerald-400">0.00 <span class="text-xs font-normal">J</span></div>
+                    </div>
+                </div>
+
+                <!-- 실시간 에너지 전환 막대 게이지 -->
+                <div class="space-y-3 bg-slate-900/60 p-3 rounded-xl border border-slate-700/60 mb-4">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-rose-300 font-medium">운동 에너지 비율 (<span id="pctEk">0</span>%)</span>
+                            <span id="barTextEk" class="font-mono text-slate-300">0.00 J</span>
+                        </div>
+                        <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                            <div id="barEk" class="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-75" style="width: 50%"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-sky-300 font-medium">중력 퍼텐셜 에너지 비율 (<span id="pctEp">0</span>%)</span>
+                            <span id="barTextEp" class="font-mono text-slate-300">0.00 J</span>
+                        </div>
+                        <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                            <div id="barEp" class="h-full bg-gradient-to-r from-sky-600 to-sky-400 transition-all duration-75" style="width: 50%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 누적 에너지 보존 비교 바 -->
+                    <div class="pt-1 border-t border-slate-800">
+                        <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                            <span>역학적 에너지 구성비 (Eₖ + Eₚ = 일정)</span>
+                            <span id="conservationNote" class="text-emerald-400 font-medium">보존 중 (공기저항 무시)</span>
+                        </div>
+                        <div class="w-full h-4 bg-slate-800 rounded-lg overflow-hidden flex border border-slate-700">
+                            <div id="stackEk" class="h-full bg-rose-500 transition-all duration-75" style="width: 50%"></div>
+                            <div id="stackEp" class="h-full bg-sky-500 transition-all duration-75" style="width: 50%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 실시간 에너지-시간 그래프 (Canvas) -->
+                <div>
+                    <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                        <span>시간에 따른 에너지 변화 그래프 (E - t)</span>
+                        <div class="flex items-center gap-2 text-[11px]">
+                            <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></i>E</span>
+                            <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-rose-400 inline-block"></i>Eₖ</span>
+                            <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-sky-400 inline-block"></i>Eₚ</span>
+                        </div>
+                    </div>
+                    <div class="w-full h-36 bg-slate-900 rounded-xl border border-slate-700/80 overflow-hidden">
+                        <canvas id="energyChartCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 실시간 위치 및 속도 성분 카드 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-xl">
+                <h2 class="text-sm font-bold text-white flex items-center gap-2 mb-3">
+                    <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+                    실시간 위치 및 속도 성분 분석
+                </h2>
+
+                <div class="grid grid-cols-2 gap-2.5 text-xs">
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-slate-700/60 flex justify-between items-center">
+                        <div>
+                            <div class="text-slate-400">수평 이동 거리 (x)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">x = v₀·cosθ·t</div>
+                        </div>
+                        <div id="valX" class="text-sm font-bold font-mono text-white">0.00 m</div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-slate-700/60 flex justify-between items-center">
+                        <div>
+                            <div class="text-slate-400">현재 높이 (y = h)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">y = h₀ + v₀y·t - ½gt²</div>
+                        </div>
+                        <div id="valY" class="text-sm font-bold font-mono text-white">2.10 m</div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-emerald-500/20 flex justify-between items-center">
+                        <div>
+                            <div class="text-emerald-300">수평 속도 (vₓ)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">등속도 운동</div>
+                        </div>
+                        <div id="valVx" class="text-sm font-bold font-mono text-emerald-400">0.00 m/s</div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-sky-500/20 flex justify-between items-center">
+                        <div>
+                            <div class="text-sky-300">연직 속도 (vᵧ)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">등가속도 (-g)</div>
+                        </div>
+                        <div id="valVy" class="text-sm font-bold font-mono text-sky-400">0.00 m/s</div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-amber-500/20 flex justify-between items-center">
+                        <div>
+                            <div class="text-amber-300">순간 속력 (v)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">√(vₓ² + vᵧ²)</div>
+                        </div>
+                        <div id="valV" class="text-sm font-bold font-mono text-amber-400">0.00 m/s</div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-2.5 rounded-xl border border-purple-500/20 flex justify-between items-center">
+                        <div>
+                            <div class="text-purple-300">이론 최고점 (Hₘₐₓ)</div>
+                            <div class="text-[10px] text-slate-500 font-mono">vᵧ = 0 지점</div>
+                        </div>
+                        <div id="valMaxH" class="text-sm font-bold font-mono text-purple-400">0.00 m</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        /**
+         * 역학과 에너지: 3D 포물선 운동 농구 시뮬레이터 (Three.js 기반)
+         * - 3D 코트, 골대, 농구공 및 빛나는 3D 꼬리 자취(Comet Ribbon Trail) 구현
+         */
+        (function () {
+            // 1. 물리 상수
+            const MASS = 0.62;          // 농구공 질량 (kg)
+            const GRAVITY = 9.8;        // 중력가속도 (m/s^2)
+            const BALL_RADIUS = 0.12;   // 농구공 반지름 (m)
+            const HOOP_HEIGHT = 3.05;   // 표준 골대 림 높이 (m)
+            const RIM_RADIUS = 0.225;   // 표준 림 반지름 (m)
+            const RESTITUTION = 0.72;   // 반발 계수
+            const HOOP_WORLD_X = 11.5;  // 3D 월드 상 골대 림 중심의 고정 X 좌표 (코트 규격 기준점)
+
+            // 2. 시뮬레이션 파라미터 및 상태
+            let params = {
+                angleDeg: 52.0,
+                speed: 7.6,
+                releaseHeight: 2.10,
+                hoopDistance: 4.60
+            };
+
+            // 3D 코트 상 캐릭터의 2D 평면 좌표 (골대 HOOP_WORLD_X 기준 자유 이동)
+            let playerPos = {
+                x: HOOP_WORLD_X - 4.60,
+                z: 0,
+                aimYaw: 0,      // 캐릭터에서 골대 중심을 향하는 수평 방위각 (rad)
+                isMoving: false,
+                runCycle: 0
+            };
+
+            const COURT_ZONES = [
+                { dist: 1.50, label: '골밑 / 레이업' },
+                { dist: 4.60, label: '자유투 라인' },
+                { dist: 5.50, label: '미드레인지' },
+                { dist: 6.75, label: 'FIBA 3점슛' },
+                { dist: 7.24, label: 'NBA 3점슛' },
+                { dist: 14.00, label: '하프라인 슛' }
+            ];
+
+            let state = {
+                status: 'ready', // 'ready', 'jumping', 'running', 'paused', 'finished'
+                t: 0,
+                jumpTimer: 0,
+                jumpDuration: 0.34,
+                celebrateTimer: 0, // 득점 후 물만난 광어 댄스 타이머
+                s: 0,            // 슈터 발사 위치로부터 골대 방향 수평 전진 거리 (m)
+                x: playerPos.x,  // 3D 월드 X 좌표
+                y: params.releaseHeight, // 3D 월드 Y 좌표 (높이)
+                z: playerPos.z,  // 3D 월드 Z 좌표
+                vx: 0,           // 골대 방향 수평 속도 성분 (m/s)
+                vy: 0,           // 연직 속도 성분 (m/s)
+                spinAngle: 0,
+                timeScale: 1.0,
+                trail: [],
+                energyHistory: [],
+                apexPoint: null,
+                scored: false,
+                hasCollided: false
+            };
+
+            // 슈터 시작점(playerPos)에서 진행 거리 s만큼 골대 방향으로 이동한 3D 월드 (X, Z) 반환
+            function getWorldXZFromProgress(sVal) {
+                return {
+                    x: playerPos.x + Math.cos(playerPos.aimYaw) * sVal,
+                    z: playerPos.z + Math.sin(playerPos.aimYaw) * sVal
+                };
+            }
+
+            // 캐릭터 위치(x, z)로부터 골대 중심까지 직선 거리 D 및 좌우 조준각(aimYaw) 자동 계산
+            function updatePlayerDistanceAndAim(syncInputs = true) {
+                const dx = HOOP_WORLD_X - playerPos.x;
+                const dz = 0 - playerPos.z;
+                const dist = Math.max(1.0, Math.min(15.0, Math.hypot(dx, dz)));
+                playerPos.aimYaw = Math.atan2(dz, dx);
+                params.hoopDistance = dist;
+
+                if (syncInputs) {
+                    inputDistance.value = dist;
+                    numDistance.value = dist.toFixed(2);
+                }
+            }
+
+            // -------------------------------------------------------------------------
+            // 3. DOM 요소 참조
+            // -------------------------------------------------------------------------
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const simCanvas = document.getElementById('simCanvas');
+            const chartCanvas = document.getElementById('energyChartCanvas');
+            const chartCtx = chartCanvas.getContext('2d');
+
+            const inputAngle = document.getElementById('inputAngle');
+            const numAngle = document.getElementById('numAngle');
+            const inputSpeed = document.getElementById('inputSpeed');
+            const numSpeed = document.getElementById('numSpeed');
+            const inputHeight = document.getElementById('inputHeight');
+            const numHeight = document.getElementById('numHeight');
+            const inputDistance = document.getElementById('inputDistance');
+            const numDistance = document.getElementById('numDistance');
+
+            const toggleTrail = document.getElementById('toggleTrail');
+            const toggleVectors = document.getElementById('toggleVectors');
+            const toggleAimGuide = document.getElementById('toggleAimGuide');
+            const toggleApexMarker = document.getElementById('toggleApexMarker');
+            const toggleAutoAimPreset = document.getElementById('toggleAutoAimPreset');
+
+            const btnLaunch = document.getElementById('btnLaunch');
+            const btnPause = document.getElementById('btnPause');
+            const pauseText = document.getElementById('pauseText');
+            const btnStep = document.getElementById('btnStep');
+            const btnReset = document.getElementById('btnReset');
+
+            const statusBanner = document.getElementById('statusBanner');
+            const overlayTime = document.getElementById('overlayTime');
+            const overlayZoneBadge = document.getElementById('overlayZoneBadge');
+            const activeZoneDesc = document.getElementById('activeZoneDesc');
+            const overlayApexVal = document.getElementById('overlayApexVal');
+
+            const valEk = document.getElementById('valEk');
+            const valEp = document.getElementById('valEp');
+            const valEtot = document.getElementById('valEtot');
+            const pctEk = document.getElementById('pctEk');
+            const pctEp = document.getElementById('pctEp');
+            const barTextEk = document.getElementById('barTextEk');
+            const barTextEp = document.getElementById('barTextEp');
+            const barEk = document.getElementById('barEk');
+            const barEp = document.getElementById('barEp');
+            const stackEk = document.getElementById('stackEk');
+            const stackEp = document.getElementById('stackEp');
+            const conservationNote = document.getElementById('conservationNote');
+
+            const valX = document.getElementById('valX');
+            const valY = document.getElementById('valY');
+            const valVx = document.getElementById('valVx');
+            const valVy = document.getElementById('valVy');
+            const valV = document.getElementById('valV');
+            const valMaxH = document.getElementById('valMaxH');
+
+            // -------------------------------------------------------------------------
+            // 4. Three.js 3D 씬, 카메라, 조명 및 오빗 컨트롤 초기화
+            // -------------------------------------------------------------------------
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b1222);
+            scene.fog = new THREE.FogExp2(0x0b1222, 0.016);
+
+            const camera = new THREE.PerspectiveCamera(44, 16 / 10, 0.1, 150);
+            const renderer = new THREE.WebGLRenderer({ canvas: simCanvas, antialias: true, powerPreference: 'high-performance' });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            const camControl = {
+                mode: 'quarter',
+                yaw: -0.32,
+                pitch: 0.25,
+                distance: 11.5,
+                targetX: HOOP_WORLD_X - 2.3,
+                targetY: 1.95,
+                targetZ: 0,
+                isDragging: false,
+                lastX: 0,
+                lastY: 0
+            };
+
+            function setCameraPreset(mode) {
+                camControl.mode = mode;
+                const midX = (playerPos.x + HOOP_WORLD_X) * 0.5;
+                const midZ = playerPos.z * 0.5;
+                camControl.targetX = midX;
+                camControl.targetY = 1.95;
+                camControl.targetZ = midZ;
+
+                if (mode === 'quarter') {
+                    camControl.yaw = -playerPos.aimYaw - 0.32;
+                    camControl.pitch = 0.25;
+                    camControl.distance = Math.max(9.2, params.hoopDistance * 1.35 + 3.4);
+                } else if (mode === 'side') {
+                    camControl.yaw = -playerPos.aimYaw;
+                    camControl.pitch = 0.08;
+                    camControl.distance = Math.max(8.5, params.hoopDistance * 1.25 + 3.0);
+                } else if (mode === 'shooter') {
+                    camControl.yaw = -playerPos.aimYaw - Math.PI / 2;
+                    camControl.pitch = 0.22;
+                    camControl.targetX = playerPos.x + Math.cos(playerPos.aimYaw) * (params.hoopDistance * 0.65);
+                    camControl.targetZ = playerPos.z + Math.sin(playerPos.aimYaw) * (params.hoopDistance * 0.65);
+                    camControl.targetY = 2.2;
+                    camControl.distance = Math.max(7.5, params.hoopDistance * 0.95 + 3.8);
+                }
+                updateCameraPosition();
+            }
+
+            function updateCameraPosition() {
+                const cosP = Math.cos(camControl.pitch);
+                const sinP = Math.sin(camControl.pitch);
+                const sinY = Math.sin(camControl.yaw);
+                const cosY = Math.cos(camControl.yaw);
+                const tz = camControl.targetZ || 0;
+
+                camera.position.set(
+                    camControl.targetX + camControl.distance * cosP * sinY,
+                    Math.max(0.4, camControl.targetY + camControl.distance * sinP),
+                    tz + camControl.distance * cosP * cosY
+                );
+                camera.lookAt(camControl.targetX, camControl.targetY, tz);
+            }
+
+            // 3D 조명 구성
+            const hemiLight = new THREE.HemisphereLight(0xf8fafc, 0x1e293b, 0.75);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff7ed, 0.95);
+            dirLight.position.set(6, 16, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 1;
+            dirLight.shadow.camera.far = 45;
+            const dShadow = 18;
+            dirLight.shadow.camera.left = -dShadow;
+            dirLight.shadow.camera.right = dShadow;
+            dirLight.shadow.camera.top = dShadow;
+            dirLight.shadow.camera.bottom = -dShadow;
+            scene.add(dirLight);
+
+            const rimPointLight = new THREE.PointLight(0xf97316, 0.65, 10);
+            rimPointLight.position.set(HOOP_WORLD_X, HOOP_HEIGHT + 0.6, 0);
+            scene.add(rimPointLight);
+
+            // -------------------------------------------------------------------------
+            // 5. 3D 농구 코트, 골대, 귀여운 캐릭터, 공 및 꼬리 자취(Trail) 오브젝트 생성
+            // -------------------------------------------------------------------------
+            function createCourtFloorTexture() {
+                const c = document.createElement('canvas');
+                c.width = 1024;
+                c.height = 512;
+                const ctx = c.getContext('2d');
+
+                ctx.fillStyle = '#c27d38';
+                ctx.fillRect(0, 0, c.width, c.height);
+
+                const rows = 16;
+                const rowH = c.height / rows;
+                for (let r = 0; r < rows; r++) {
+                    ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+                    ctx.fillRect(0, r * rowH, c.width, rowH);
+                    ctx.strokeStyle = 'rgba(92, 51, 23, 0.25)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(0, r * rowH);
+                    ctx.lineTo(c.width, r * rowH);
+                    ctx.stroke();
+                }
+
+                const tex = new THREE.CanvasTexture(c);
+                tex.wrapS = THREE.RepeatWrapping;
+                tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(4, 3);
+                return tex;
+            }
+
+            const courtFloorGeo = new THREE.PlaneGeometry(34, 18);
+            const courtFloorMat = new THREE.MeshStandardMaterial({
+                map: createCourtFloorTexture(),
+                roughness: 0.42,
+                metalness: 0.05
+            });
+            const courtFloor = new THREE.Mesh(courtFloorGeo, courtFloorMat);
+            courtFloor.rotation.x = -Math.PI / 2;
+            courtFloor.position.set(4.5, 0, 0);
+            courtFloor.receiveShadow = true;
+            scene.add(courtFloor);
+
+            const outerFloor = new THREE.Mesh(
+                new THREE.PlaneGeometry(80, 60),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 })
+            );
+            outerFloor.rotation.x = -Math.PI / 2;
+            outerFloor.position.set(4.5, -0.01, 0);
+            scene.add(outerFloor);
+
+            // 코트 규격 흰색 라인 (골대 HOOP_WORLD_X 기준)
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, side: THREE.DoubleSide });
+            function addCourtLineBox(x1, z1, x2, z2, thickness = 0.06) {
+                const len = Math.hypot(x2 - x1, z2 - z1);
+                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(len, thickness), lineMat);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.rotation.z = -Math.atan2(z2 - z1, x2 - x1);
+                mesh.position.set((x1 + x2) / 2, 0.008, (z1 + z2) / 2);
+                scene.add(mesh);
+            }
+
+            const endlineX = HOOP_WORLD_X + 1.575;
+            const halfCourtX = HOOP_WORLD_X - 14.0;
+            addCourtLineBox(halfCourtX, -7.5, endlineX, -7.5);
+            addCourtLineBox(halfCourtX, 7.5, endlineX, 7.5);
+            addCourtLineBox(endlineX, -7.5, endlineX, 7.5);
+            addCourtLineBox(halfCourtX, -7.5, halfCourtX, 7.5);
+
+            // 페인트존 및 자유투 라인
+            const ftLineX = HOOP_WORLD_X - 4.60;
+            addCourtLineBox(ftLineX, -2.45, endlineX, -2.45);
+            addCourtLineBox(ftLineX, 2.45, endlineX, 2.45);
+            addCourtLineBox(ftLineX, -2.45, ftLineX, 2.45);
+
+            // 3점 아크 (FIBA 6.75m & NBA 7.24m)
+            function addThreePointArc(radius, colorHex) {
+                const arcPts = [];
+                const segments = 48;
+                for (let i = 0; i <= segments; i++) {
+                    const theta = -Math.PI * 0.44 + (Math.PI * 0.88 * i) / segments;
+                    const ax = HOOP_WORLD_X - Math.cos(theta) * radius;
+                    const az = Math.sin(theta) * radius;
+                    if (Math.abs(az) <= 6.75) {
+                        arcPts.push(new THREE.Vector3(ax, 0.01, az));
+                    }
+                }
+                const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPts);
+                const arcLine = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({ color: colorHex }));
+                scene.add(arcLine);
+            }
+            addThreePointArc(6.75, 0xf8fafc);
+            addThreePointArc(7.24, 0xfbbf24);
+
+            // 3D 골대 그룹 (HOOP_WORLD_X 기준)
+            const hoopGroup = new THREE.Group();
+            hoopGroup.position.set(HOOP_WORLD_X, 0, 0);
+            scene.add(hoopGroup);
+
+            const backboardX = RIM_RADIUS + 0.15;
+            const poleX = backboardX + 0.85;
+
+            const poleMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.11, 0.13, 3.9, 16),
+                new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6, roughness: 0.35 })
+            );
+            poleMesh.position.set(poleX, 1.95, 0);
+            poleMesh.castShadow = true;
+            hoopGroup.add(poleMesh);
+
+            const armMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 0.12, 0.12),
+                new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6, roughness: 0.35 })
+            );
+            armMesh.position.set(backboardX + 0.42, HOOP_HEIGHT + 0.35, 0);
+            hoopGroup.add(armMesh);
+
+            const boardMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.06, 1.05, 1.8),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0xe2e8f0,
+                    transparent: true,
+                    opacity: 0.45,
+                    roughness: 0.15,
+                    metalness: 0.1
+                })
+            );
+            boardMesh.position.set(backboardX, HOOP_HEIGHT + 0.35, 0);
+            hoopGroup.add(boardMesh);
+
+            const boardEdges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(0.065, 1.05, 1.8)),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            );
+            boardEdges.position.copy(boardMesh.position);
+            hoopGroup.add(boardEdges);
+
+            const squareEdges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(0.07, 0.45, 0.59)),
+                new THREE.LineBasicMaterial({ color: 0xf97316 })
+            );
+            squareEdges.position.set(backboardX - 0.005, HOOP_HEIGHT + 0.22, 0);
+            hoopGroup.add(squareEdges);
+
+            const rimMesh = new THREE.Mesh(
+                new THREE.TorusGeometry(RIM_RADIUS, 0.018, 12, 32),
+                new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.3, metalness: 0.4 })
+            );
+            rimMesh.rotation.x = Math.PI / 2;
+            rimMesh.position.set(0, HOOP_HEIGHT, 0);
+            hoopGroup.add(rimMesh);
+
+            const netPts = [];
+            const netSegments = 14;
+            const netHeight = 0.42;
+            for (let i = 0; i < netSegments; i++) {
+                const a1 = (i / netSegments) * Math.PI * 2;
+                const a2 = ((i + 0.5) / netSegments) * Math.PI * 2;
+                const a3 = ((i + 1) / netSegments) * Math.PI * 2;
+                const rTop = RIM_RADIUS;
+                const rBot = RIM_RADIUS * 0.64;
+
+                netPts.push(new THREE.Vector3(Math.cos(a1) * rTop, HOOP_HEIGHT, Math.sin(a1) * rTop));
+                netPts.push(new THREE.Vector3(Math.cos(a2) * rBot, HOOP_HEIGHT - netHeight, Math.sin(a2) * rBot));
+                netPts.push(new THREE.Vector3(Math.cos(a2) * rBot, HOOP_HEIGHT - netHeight, Math.sin(a2) * rBot));
+                netPts.push(new THREE.Vector3(Math.cos(a3) * rTop, HOOP_HEIGHT, Math.sin(a3) * rTop));
+            }
+            const netGeo = new THREE.BufferGeometry().setFromPoints(netPts);
+            const netLines = new THREE.LineSegments(netGeo, new THREE.LineBasicMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.75 }));
+            hoopGroup.add(netLines);
+
+            // 슈터 위치 가이드 및 귀여운 농구 선수 캐릭터 그룹
+            const shooterGroup = new THREE.Group();
+            scene.add(shooterGroup);
+
+            const heightPole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.015, 0.015, 1, 8),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
+            );
+            shooterGroup.add(heightPole);
+
+            const releaseRing = new THREE.Mesh(
+                new THREE.RingGeometry(0.16, 0.23, 24),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+            );
+            releaseRing.rotation.x = Math.PI / 2;
+            shooterGroup.add(releaseRing);
+
+            // 귀여운 농구 선수 캐릭터 조립
+            const playerChar = new THREE.Group();
+            shooterGroup.add(playerChar);
+
+            // 감스트 시그니처 팔레트 (레드 저지 & 뿔테 안경 & 가르마 헤어)
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xf6c39b, roughness: 0.52 });
+            const jerseyMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.42 }); // 강렬한 레드 유니폼
+            const shortsMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });  // 블랙 쇼츠
+            const shoeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });   // 골드/옐로우 포인트 농구화
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.65 });   // 짙은 흑발 가르마 헤어
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.2, metalness: 0.4 }); // 시그니처 검은 뿔테 안경
+            const goldBandMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.5 });
+
+            // 다리 & 농구화
+            const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.06, 0.52, 12), skinMat);
+            leftLeg.position.set(0, 0.32, 0.12);
+            leftLeg.castShadow = true;
+            playerChar.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.06, 0.52, 12), skinMat);
+            rightLeg.position.set(0, 0.32, -0.12);
+            rightLeg.castShadow = true;
+            playerChar.add(rightLeg);
+
+            const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.095, 0.13), shoeMat);
+            leftShoe.position.set(0.04, 0.045, 0.12);
+            leftShoe.castShadow = true;
+            playerChar.add(leftShoe);
+
+            const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.095, 0.13), shoeMat);
+            rightShoe.position.set(0.04, 0.045, -0.12);
+            rightShoe.castShadow = true;
+            playerChar.add(rightShoe);
+
+            // 블랙 반바지 & 든든한 레드 상의 유니폼
+            const shortsMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.23, 0.25, 16), shortsMat);
+            shortsMesh.position.set(0, 0.62, 0);
+            shortsMesh.castShadow = true;
+            playerChar.add(shortsMesh);
+
+            const torsoMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.22, 0.46, 16), jerseyMat);
+            torsoMesh.position.set(0, 0.94, 0);
+            torsoMesh.castShadow = true;
+            playerChar.add(torsoMesh);
+
+            // 유니폼 전면/후면 '90' 배번 텍스처 패치 (감스트 1990년생 상징)
+            function createJerseyNumberTexture() {
+                const c = document.createElement('canvas');
+                c.width = 256;
+                c.height = 256;
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = '#dc2626';
+                ctx.fillRect(0, 0, 256, 256);
+                ctx.fillStyle = '#facc15';
+                ctx.font = 'bold 42px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAMST', 128, 78);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 124px Inter, sans-serif';
+                ctx.fillText('90', 128, 198);
+                return new THREE.CanvasTexture(c);
+            }
+            const backJerseyPlate = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.26, 0.28),
+                new THREE.MeshBasicMaterial({ map: createJerseyNumberTexture() })
+            );
+            backJerseyPlate.position.set(-0.205, 0.96, 0);
+            backJerseyPlate.rotation.y = -Math.PI / 2;
+            playerChar.add(backJerseyPlate);
+
+            // 머리, 가르마 포마드 헤어, 검은 뿔테 안경, 수염 포인트
+            const headGroup = new THREE.Group();
+            headGroup.position.set(0, 1.39, 0);
+            playerChar.add(headGroup);
+
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 24), skinMat);
+            headMesh.scale.set(1.0, 1.06, 1.02);
+            headMesh.castShadow = true;
+            headGroup.add(headMesh);
+
+            // 귀여운 양쪽 귀
+            const earGeo = new THREE.SphereGeometry(0.045, 10, 10);
+            const earL = new THREE.Mesh(earGeo, skinMat);
+            earL.position.set(-0.02, -0.01, 0.235);
+            const earR = new THREE.Mesh(earGeo, skinMat);
+            earR.position.set(-0.02, -0.01, -0.235);
+            headGroup.add(earL, earR);
+
+            // 뒤통수와 정수리를 감싸는 깔끔한 포마드 헤어캡 (-X 뒤쪽으로 젖혀 이마 노출)
+            const hairCap = new THREE.Mesh(
+                new THREE.SphereGeometry(0.248, 24, 20, 0, Math.PI * 2, 0, Math.PI * 0.54),
+                hairMat
+            );
+            hairCap.rotation.z = 0.42; // 뒤통수(-X) 방향으로 젖혀 앞이마가 깔끔히 보이도록 조정
+            hairCap.position.set(-0.025, 0.015, 0);
+            headGroup.add(hairCap);
+
+            // 시그니처 6:4 가르마 포마드 앞머리 볼륨 (이마 위쪽 헤어라인에 자연스럽게 배치)
+            const hairPompadourL = new THREE.Mesh(new THREE.SphereGeometry(0.095, 16, 16), hairMat);
+            hairPompadourL.scale.set(0.95, 0.65, 1.35);
+            hairPompadourL.position.set(0.115, 0.21, 0.075);
+            hairPompadourL.rotation.set(0.15, 0.2, -0.25);
+            headGroup.add(hairPompadourL);
+
+            const hairPompadourR = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 14), hairMat);
+            hairPompadourR.scale.set(0.9, 0.6, 1.15);
+            hairPompadourR.position.set(0.11, 0.195, -0.105);
+            hairPompadourR.rotation.set(-0.15, -0.2, -0.25);
+            headGroup.add(hairPompadourR);
+
+            // 구레나룻 디테일
+            const sideburnGeo = new THREE.BoxGeometry(0.045, 0.09, 0.02);
+            const sideburnL = new THREE.Mesh(sideburnGeo, hairMat);
+            sideburnL.position.set(0.05, 0.03, 0.228);
+            const sideburnR = new THREE.Mesh(sideburnGeo, hairMat);
+            sideburnR.position.set(0.05, 0.03, -0.228);
+            headGroup.add(sideburnL, sideburnR);
+
+            // 짙은 눈썹 & 눈
+            const browGeo = new THREE.BoxGeometry(0.022, 0.02, 0.072);
+            const browL = new THREE.Mesh(browGeo, hairMat);
+            browL.position.set(0.225, 0.085, 0.082);
+            browL.rotation.x = -0.1;
+            const browR = new THREE.Mesh(browGeo, hairMat);
+            browR.position.set(0.225, 0.085, -0.082);
+            browR.rotation.x = 0.1;
+            headGroup.add(browL, browR);
+
+            const eyeGeo = new THREE.SphereGeometry(0.023, 10, 10);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeL.position.set(0.226, 0.025, 0.082);
+            const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeR.position.set(0.226, 0.025, -0.082);
+            headGroup.add(eyeL, eyeR);
+
+            // 감스트 시그니처 검은 사각 뿔테 안경 프레임
+            function createSquareGlassesFrame() {
+                const g = new THREE.Group();
+                const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.014, 0.105), glassMat);
+                topBar.position.set(0, 0.038, 0);
+                const botBar = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.011, 0.098), glassMat);
+                botBar.position.set(0, -0.036, 0);
+                const leftBar = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.082, 0.013), glassMat);
+                leftBar.position.set(0, 0, 0.048);
+                const rightBar = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.082, 0.013), glassMat);
+                rightBar.position.set(0, 0, -0.048);
+                g.add(topBar, botBar, leftBar, rightBar);
+                return g;
+            }
+            const frameL = createSquareGlassesFrame();
+            frameL.position.set(0.242, 0.025, 0.082);
+            const frameR = createSquareGlassesFrame();
+            frameR.position.set(0.242, 0.025, -0.082);
+            const bridgeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.014, 0.055), glassMat);
+            bridgeMesh.position.set(0.244, 0.042, 0);
+            const templeL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.012, 0.012), glassMat);
+            templeL.position.set(0.12, 0.032, 0.16);
+            templeL.rotation.y = 0.25;
+            const templeR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.012, 0.012), glassMat);
+            templeR.position.set(0.12, 0.032, -0.16);
+            templeR.rotation.y = -0.25;
+            headGroup.add(frameL, frameR, bridgeMesh, templeL, templeR);
+
+            // 열정적인 입모양 & 턱수염(구레나룻/수염) 포인트
+            const mouthMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.034, 12, 12),
+                new THREE.MeshBasicMaterial({ color: 0x991b1b })
+            );
+            mouthMesh.scale.set(0.6, 0.85, 1.25);
+            mouthMesh.position.set(0.226, -0.082, 0);
+            const goateeMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.028, 0.03, 0.072),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 })
+            );
+            goateeMesh.position.set(0.212, -0.142, 0);
+            headGroup.add(mouthMesh, goateeMesh);
+
+            // 어깨 기준 회전하는 양팔 & 양손 (왼팔 금색 주장 완장 포인트)
+            const armsPivot = new THREE.Group();
+            armsPivot.position.set(0.02, 1.10, 0);
+            playerChar.add(armsPivot);
+
+            const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.046, 0.44, 10), skinMat);
+            leftArm.position.set(0, 0.22, 0.21);
+            armsPivot.add(leftArm);
+
+            const captainBand = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.056, 0.06, 12), goldBandMat);
+            captainBand.position.set(0, 0.12, 0.21);
+            armsPivot.add(captainBand);
+
+            const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.046, 0.44, 10), skinMat);
+            rightArm.position.set(0, 0.22, -0.21);
+            armsPivot.add(rightArm);
+
+            const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.056, 10, 10), skinMat);
+            leftHand.position.set(0.04, 0.44, 0.15);
+            armsPivot.add(leftHand);
+
+            const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.056, 10, 10), skinMat);
+            rightHand.position.set(0.04, 0.44, -0.15);
+            armsPivot.add(rightHand);
+
+            function updateCharacterPose() {
+                const h0 = params.releaseHeight;
+                const standingReach = 1.58;
+                const minCrouchReach = 0.85;
+
+                let targetBaseY = 0;
+                let targetScaleY = 1.0;
+                let targetArmAngle = -0.18;
+
+                if (h0 >= standingReach) {
+                    targetBaseY = h0 - standingReach;
+                    targetArmAngle = -0.12;
+                } else if (h0 >= minCrouchReach) {
+                    const ratio = (h0 - minCrouchReach) / (standingReach - minCrouchReach);
+                    targetScaleY = 0.72 + 0.28 * ratio;
+                    targetArmAngle = -Math.PI * (0.65 - 0.53 * ratio);
+                } else {
+                    targetScaleY = 0.65;
+                    targetArmAngle = -Math.PI * 0.85;
+                }
+
+                let charBaseY = 0;
+                let charScaleY = 1.0;
+                let armTiltAngle = -0.85;
+
+                // 기본 자세 회전 초기화
+                playerChar.rotation.set(0, 0, 0);
+                headGroup.rotation.set(0, 0, 0);
+                leftArm.rotation.set(0, 0, 0);
+                rightArm.rotation.set(0, 0, 0);
+
+                // ★ 득점 시 물만난 광어 댄스 세리머니 모션!
+                if (state.celebrateTimer > 0) {
+                    const ct = state.celebrateTimer;
+                    const flopWave = Math.sin(ct * 22);       // 빠른 광어 펄떡임 주기
+                    const tailWave = Math.sin(ct * 22 - 1.1); // 꼬리(다리) 시차 파동
+                    const bounce = Math.abs(Math.sin(ct * 11)) * 0.16; // 바닥에서 통통 튀어 오름
+
+                    // 코트 바닥에 옆으로 누운 자세 + 좌우/상하 파닥거림
+                    playerChar.rotation.x = Math.PI * 0.48 + flopWave * 0.14;
+                    playerChar.rotation.z = Math.sin(ct * 11) * 0.18;
+                    charBaseY = 0.24 + bounce;
+                    charScaleY = 1.0;
+
+                    // 머리(아가미)와 다리(꼬리지느러미)가 번갈아 펄떡이는 광어 웨이브
+                    headGroup.rotation.z = flopWave * 0.35;
+                    leftLeg.rotation.z = tailWave * 0.65;
+                    rightLeg.rotation.z = -tailWave * 0.65;
+                    leftShoe.position.x = 0.04 - tailWave * 0.14;
+                    rightShoe.position.x = 0.04 + tailWave * 0.14;
+
+                    // 양팔(가슴지느러미) 파닥파닥
+                    armTiltAngle = -1.2 + flopWave * 0.45;
+                    leftArm.rotation.x = 0.4 + flopWave * 0.5;
+                    rightArm.rotation.x = -0.4 - flopWave * 0.5;
+
+                    shooterGroup.position.set(playerPos.x, 0, playerPos.z);
+                    shooterGroup.rotation.y = -playerPos.aimYaw;
+                    playerChar.position.set(-0.18, charBaseY, 0);
+                    playerChar.scale.set(1, charScaleY, 1);
+                    armsPivot.rotation.z = armTiltAngle;
+                    releaseRing.position.set(0, h0, 0);
+                    return;
+                }
+
+                if (state.status === 'ready') {
+                    charBaseY = playerPos.isMoving ? Math.abs(Math.sin(playerPos.runCycle)) * 0.08 : 0;
+                    charScaleY = 1.0;
+                    armTiltAngle = -0.85;
+                } else if (state.status === 'jumping') {
+                    const p = Math.min(1, state.jumpTimer / state.jumpDuration);
+                    if (p < 0.3) {
+                        const crouchP = p / 0.3;
+                        const easeCrouch = Math.sin(crouchP * Math.PI * 0.5);
+                        charBaseY = 0;
+                        charScaleY = 1.0 - 0.14 * easeCrouch;
+                        armTiltAngle = -0.85 - 0.15 * easeCrouch;
+                    } else {
+                        const jumpP = (p - 0.3) / 0.7;
+                        const easeJump = 1 - Math.pow(1 - jumpP, 2);
+                        charBaseY = targetBaseY * easeJump;
+                        charScaleY = (1.0 - 0.14) + (targetScaleY - (1.0 - 0.14)) * easeJump;
+                        armTiltAngle = -1.0 + (targetArmAngle - (-1.0)) * easeJump;
+                    }
+                } else {
+                    const landProgress = Math.min(1, state.t / 0.42);
+                    const easeLand = 1 - Math.pow(1 - landProgress, 2);
+                    charBaseY = targetBaseY * (1 - easeLand);
+                    charScaleY = targetScaleY + (1.0 - targetScaleY) * easeLand;
+                    const followThrough = -0.32 * Math.sin(Math.min(1, state.t / 0.25) * Math.PI * 0.5);
+                    armTiltAngle = targetArmAngle + followThrough;
+                }
+
+                if (state.status === 'ready' && playerPos.isMoving) {
+                    const swing = Math.sin(playerPos.runCycle) * 0.55;
+                    leftLeg.rotation.z = swing;
+                    rightLeg.rotation.z = -swing;
+                    leftShoe.position.x = 0.04 - Math.sin(playerPos.runCycle) * 0.12;
+                    rightShoe.position.x = 0.04 + Math.sin(playerPos.runCycle) * 0.12;
+                } else {
+                    leftLeg.rotation.z = 0;
+                    rightLeg.rotation.z = 0;
+                    leftShoe.position.x = 0.04;
+                    rightShoe.position.x = 0.04;
+                }
+
+                shooterGroup.position.set(playerPos.x, 0, playerPos.z);
+                shooterGroup.rotation.y = -playerPos.aimYaw;
+
+                playerChar.position.set(-0.18, charBaseY, 0);
+                playerChar.scale.set(1, charScaleY, 1);
+                armsPivot.rotation.z = armTiltAngle;
+
+                releaseRing.position.set(0, h0, 0);
+            }
+
+            // 3D 농구공 메쉬
+            function createBasketballTexture() {
+                const c = document.createElement('canvas');
+                c.width = 512;
+                c.height = 256;
+                const ctx = c.getContext('2d');
+
+                ctx.fillStyle = '#ea580c';
+                ctx.fillRect(0, 0, c.width, c.height);
+
+                ctx.strokeStyle = '#1e1b18';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(0, c.height / 2);
+                ctx.lineTo(c.width, c.height / 2);
+                ctx.moveTo(c.width / 2, 0);
+                ctx.lineTo(c.width / 2, c.height);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(c.width * 0.25, c.height * 0.5, c.height * 0.42, -Math.PI * 0.45, Math.PI * 0.45);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(c.width * 0.75, c.height * 0.5, c.height * 0.42, Math.PI * 0.55, Math.PI * 1.45);
+                ctx.stroke();
+
+                return new THREE.CanvasTexture(c);
+            }
+
+            const ballMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(BALL_RADIUS, 28, 28),
+                new THREE.MeshStandardMaterial({
+                    map: createBasketballTexture(),
+                    roughness: 0.55,
+                    metalness: 0.05
+                })
+            );
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            const floorShadowMesh = new THREE.Mesh(
+                new THREE.CircleGeometry(BALL_RADIUS * 1.15, 20),
+                new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38 })
+            );
+            floorShadowMesh.rotation.x = -Math.PI / 2;
+            floorShadowMesh.position.y = 0.015;
+            scene.add(floorShadowMesh);
+
+            // 3D 꼬리 자취 (Comet Ribbon Trail) 초기화
+            const MAX_TRAIL_POINTS = 70;
+            const trailGeo = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(MAX_TRAIL_POINTS * 2 * 3);
+            const trailColors = new Float32Array(MAX_TRAIL_POINTS * 2 * 3);
+            const trailIndices = [];
+            for (let i = 0; i < MAX_TRAIL_POINTS - 1; i++) {
+                const a = i * 2;
+                const b = i * 2 + 1;
+                const c = (i + 1) * 2;
+                const d = (i + 1) * 2 + 1;
+                trailIndices.push(a, b, c, b, d, c);
+            }
+            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+            trailGeo.setIndex(trailIndices);
+
+            const trailMat = new THREE.MeshBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.85,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const trailRibbonMesh = new THREE.Mesh(trailGeo, trailMat);
+            trailRibbonMesh.frustumCulled = false;
+            scene.add(trailRibbonMesh);
+
+            const coreLineGeo = new THREE.BufferGeometry();
+            const coreLinePositions = new Float32Array(MAX_TRAIL_POINTS * 3);
+            coreLineGeo.setAttribute('position', new THREE.BufferAttribute(coreLinePositions, 3));
+            const coreLineMesh = new THREE.Line(
+                coreLineGeo,
+                new THREE.LineBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.9 })
+            );
+            coreLineMesh.frustumCulled = false;
+            scene.add(coreLineMesh);
+
+            function update3DTrail() {
+                const show = toggleTrail.checked && state.trail.length >= 2;
+                trailRibbonMesh.visible = show;
+                coreLineMesh.visible = show;
+                if (!show) return;
+
+                const sliceStart = Math.max(0, state.trail.length - MAX_TRAIL_POINTS);
+                const count = state.trail.length - sliceStart;
+
+                const tailColor = new THREE.Color(0xef4444);
+                const midColor = new THREE.Color(0xf97316);
+                const headColor = new THREE.Color(0xfef08a);
+
+                for (let i = 0; i < MAX_TRAIL_POINTS; i++) {
+                    const idx = Math.min(count - 1, i);
+                    const p = state.trail[sliceStart + idx];
+                    const prevP = state.trail[sliceStart + Math.max(0, idx - 1)];
+                    const nextP = state.trail[sliceStart + Math.min(count - 1, idx + 1)];
+
+                    let tx = nextP.x - prevP.x;
+                    let ty = nextP.y - prevP.y;
+                    let tz = (nextP.z || 0) - (prevP.z || 0);
+                    const len = Math.hypot(tx, ty, tz) || 1;
+                    tx /= len;
+                    ty /= len;
+                    tz /= len;
+
+                    const horizDirX = Math.cos(playerPos.aimYaw);
+                    const horizDirZ = Math.sin(playerPos.aimYaw);
+                    const nx = -ty * horizDirX;
+                    const ny = tx * horizDirX + tz * horizDirZ;
+                    const nz = -ty * horizDirZ;
+
+                    const ratio = count > 1 ? idx / (count - 1) : 1;
+                    const halfWidth = BALL_RADIUS * 0.88 * Math.pow(ratio, 1.35);
+
+                    const vIdx = i * 6;
+                    trailPositions[vIdx]     = p.x + nx * halfWidth;
+                    trailPositions[vIdx + 1] = p.y + ny * halfWidth;
+                    trailPositions[vIdx + 2] = (p.z || 0) + nz * halfWidth;
+
+                    trailPositions[vIdx + 3] = p.x - nx * halfWidth;
+                    trailPositions[vIdx + 4] = p.y - ny * halfWidth;
+                    trailPositions[vIdx + 5] = (p.z || 0) - nz * halfWidth;
+
+                    const c = new THREE.Color();
+                    if (ratio < 0.5) {
+                        c.lerpColors(tailColor, midColor, ratio * 2);
+                    } else {
+                        c.lerpColors(midColor, headColor, (ratio - 0.5) * 2);
+                    }
+                    c.multiplyScalar(0.25 + 0.75 * ratio);
+
+                    trailColors[vIdx]     = c.r;
+                    trailColors[vIdx + 1] = c.g;
+                    trailColors[vIdx + 2] = c.b;
+                    trailColors[vIdx + 3] = c.r;
+                    trailColors[vIdx + 4] = c.g;
+                    trailColors[vIdx + 5] = c.b;
+
+                    coreLinePositions[i * 3]     = p.x;
+                    coreLinePositions[i * 3 + 1] = p.y;
+                    coreLinePositions[i * 3 + 2] = (p.z || 0) + 0.01;
+                }
+
+                trailGeo.attributes.position.needsUpdate = true;
+                trailGeo.attributes.color.needsUpdate = true;
+                trailGeo.setDrawRange(0, (count - 1) * 6);
+
+                coreLineGeo.attributes.position.needsUpdate = true;
+                coreLineGeo.setDrawRange(0, count);
+            }
+
+            // 예측 궤적 가이드 점선, 최고점 마커, 3D 속도 벡터 화살표
+            const aimGuideGroup = new THREE.Group();
+            scene.add(aimGuideGroup);
+            const aimDots = [];
+            const dotGeo = new THREE.SphereGeometry(0.032, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xfb923c, transparent: true, opacity: 0.65 });
+            for (let i = 0; i < 45; i++) {
+                const dot = new THREE.Mesh(dotGeo, dotMat);
+                aimGuideGroup.add(dot);
+                aimDots.push(dot);
+            }
+
+            const apexMarkerGroup = new THREE.Group();
+            const apexDiamond = new THREE.Mesh(
+                new THREE.OctahedronGeometry(0.09, 0),
+                new THREE.MeshBasicMaterial({ color: 0xc084fc })
+            );
+            apexMarkerGroup.add(apexDiamond);
+            scene.add(apexMarkerGroup);
+
+            const arrowVx = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1, 0x34d399, 0.2, 0.11);
+            const arrowVy = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 1, 0x38bdf8, 0.2, 0.11);
+            const arrowV  = new THREE.ArrowHelper(new THREE.Vector3(1, 1, 0).normalize(), new THREE.Vector3(), 1, 0xfbbf24, 0.24, 0.13);
+            scene.add(arrowVx, arrowVy, arrowV);
+
+            function getTheoreticalMaxHeight() {
+                const rad = (params.angleDeg * Math.PI) / 180;
+                const vy0 = params.speed * Math.sin(rad);
+                return params.releaseHeight + (vy0 * vy0) / (2 * GRAVITY);
+            }
+
+            function update3DEnvironmentAndGuides() {
+                hoopGroup.position.x = HOOP_WORLD_X;
+                rimPointLight.position.x = HOOP_WORLD_X;
+
+                heightPole.scale.set(1, Math.max(0.05, params.releaseHeight), 1);
+                heightPole.position.set(0, params.releaseHeight / 2, 0);
+
+                updateCharacterPose();
+
+                aimGuideGroup.visible = toggleAimGuide.checked;
+                if (toggleAimGuide.checked) {
+                    const rad = (params.angleDeg * Math.PI) / 180;
+                    const vx0 = params.speed * Math.cos(rad);
+                    const vy0 = params.speed * Math.sin(rad);
+
+                    for (let i = 0; i < aimDots.length; i++) {
+                        const t = (i + 1) * 0.045;
+                        const ps = vx0 * t;
+                        const py = params.releaseHeight + vy0 * t - 0.5 * GRAVITY * t * t;
+                        if (py >= BALL_RADIUS && ps <= params.hoopDistance + 2.5) {
+                            const worldXZ = getWorldXZFromProgress(ps);
+                            aimDots[i].visible = true;
+                            aimDots[i].position.set(worldXZ.x, py, worldXZ.z);
+                        } else {
+                            aimDots[i].visible = false;
+                        }
+                    }
+                }
+
+                const maxH = getTheoreticalMaxHeight();
+                overlayApexVal.textContent = maxH.toFixed(2) + ' m';
+                valMaxH.textContent = maxH.toFixed(2) + ' m';
+
+                apexMarkerGroup.visible = toggleApexMarker.checked;
+                if (toggleApexMarker.checked) {
+                    if (state.apexPoint) {
+                        apexMarkerGroup.position.set(state.apexPoint.x, state.apexPoint.y, state.apexPoint.z || 0);
+                    } else {
+                        const rad = (params.angleDeg * Math.PI) / 180;
+                        const vx0 = params.speed * Math.cos(rad);
+                        const vy0 = params.speed * Math.sin(rad);
+                        const tApex = Math.max(0, vy0 / GRAVITY);
+                        const apexXZ = getWorldXZFromProgress(vx0 * tApex);
+                        apexMarkerGroup.position.set(apexXZ.x, maxH, apexXZ.z);
+                    }
+                }
+            }
+
+            // 매 프레임 공 및 속도 벡터 3D 위치 업데이트
+            function sync3DObjects() {
+                updateCharacterPose();
+
+                // 준비('ready') 또는 점프 중('jumping')일 때는 공이 선수의 양손 위치를 따라 이동
+                if (state.status === 'ready' || state.status === 'jumping') {
+                    playerChar.updateMatrixWorld(true);
+                    const leftHandWorld = new THREE.Vector3();
+                    const rightHandWorld = new THREE.Vector3();
+                    leftHand.getWorldPosition(leftHandWorld);
+                    rightHand.getWorldPosition(rightHandWorld);
+                    state.x = (leftHandWorld.x + rightHandWorld.x) * 0.5 + Math.cos(playerPos.aimYaw) * 0.06;
+                    state.y = (leftHandWorld.y + rightHandWorld.y) * 0.5 + 0.04;
+                    state.z = (leftHandWorld.z + rightHandWorld.z) * 0.5 + Math.sin(playerPos.aimYaw) * 0.06;
+                }
+
+                ballMesh.position.set(state.x, state.y, state.z);
+                ballMesh.rotation.y = -playerPos.aimYaw;
+                ballMesh.rotation.z = state.spinAngle;
+
+                // 바닥 그림자 위치 및 크기 조절
+                floorShadowMesh.position.set(state.x, 0.015, state.z);
+                const shadowScale = Math.max(0.35, 1 - state.y * 0.12);
+                floorShadowMesh.scale.set(shadowScale, shadowScale, 1);
+                floorShadowMesh.material.opacity = Math.max(0.12, 0.48 - state.y * 0.06);
+
+                // 3D 속도 벡터 화살표 갱신 (공이 실제로 발사된 이후에만 표시, 골대 방향 수직 평면 기준)
+                const isLaunched = state.status === 'running' || state.status === 'paused' || state.status === 'finished';
+                const showVec = toggleVectors.checked && isLaunched;
+                arrowVx.visible = showVec && Math.abs(state.vx) > 0.05;
+                arrowVy.visible = showVec && Math.abs(state.vy) > 0.05;
+                const speed = Math.hypot(state.vx, state.vy);
+                arrowV.visible = showVec && speed > 0.05;
+
+                if (showVec) {
+                    const origin = new THREE.Vector3(state.x, state.y, state.z);
+                    const vecScale = 0.16;
+                    const dirX = Math.cos(playerPos.aimYaw);
+                    const dirZ = Math.sin(playerPos.aimYaw);
+
+                    if (arrowVx.visible) {
+                        arrowVx.position.copy(origin);
+                        arrowVx.setDirection(new THREE.Vector3(dirX * Math.sign(state.vx), 0, dirZ * Math.sign(state.vx)).normalize());
+                        arrowVx.setLength(Math.max(0.28, Math.abs(state.vx) * vecScale), 0.18, 0.10);
+                    }
+                    if (arrowVy.visible) {
+                        arrowVy.position.copy(origin);
+                        arrowVy.setDirection(new THREE.Vector3(0, Math.sign(state.vy), 0));
+                        arrowVy.setLength(Math.max(0.28, Math.abs(state.vy) * vecScale), 0.18, 0.10);
+                    }
+                    if (arrowV.visible) {
+                        arrowV.position.copy(origin);
+                        arrowV.setDirection(new THREE.Vector3(dirX * state.vx, state.vy, dirZ * state.vx).normalize());
+                        arrowV.setLength(Math.max(0.32, speed * vecScale), 0.22, 0.12);
+                    }
+                }
+
+                update3DTrail();
+            }
+
+            // -------------------------------------------------------------------------
+            // 6. 물리 엔진 스텝 & 충돌 판정
+            // -------------------------------------------------------------------------
+            function stepJump(dt) {
+                state.jumpTimer += dt;
+                sync3DObjects();
+
+                if (state.jumpTimer >= state.jumpDuration) {
+                    // 점프 정점(타점 h0) 도달 시 정확히 캐릭터 발사 위치 (playerPos.x, h0, playerPos.z)에서 골대를 향해 발사!
+                    state.status = 'running';
+                    state.t = 0;
+                    state.s = 0;
+                    state.x = playerPos.x;
+                    state.y = params.releaseHeight;
+                    state.z = playerPos.z;
+                    state.trail = [{ x: state.x, y: state.y, z: state.z }];
+                    btnPause.disabled = false;
+                    sync3DObjects();
+                    updateDashboard();
+                }
+            }
+
+            function stepPhysics(dt) {
+                const prevS = state.s;
+                const prevY = state.y;
+                const prevVy = state.vy;
+
+                state.t += dt;
+                state.s += state.vx * dt;
+                state.vy -= GRAVITY * dt;
+                state.y += state.vy * dt;
+                state.spinAngle -= (state.vx * dt) / BALL_RADIUS;
+
+                const curXZ = getWorldXZFromProgress(state.s);
+                state.x = curXZ.x;
+                state.z = curXZ.z;
+
+                // 최고점 포착 (vy가 양수 -> 음수로 바뀌는 순간)
+                if (!state.hasCollided && prevVy > 0 && state.vy <= 0 && !state.apexPoint) {
+                    state.apexPoint = { x: state.x, y: state.y, z: state.z };
+                    update3DEnvironmentAndGuides();
+                }
+
+                // 궤적 포인트 기록 (일정 거리 이상 이동했을 때 추가하여 부드러운 리본 유지)
+                const lastPt = state.trail[state.trail.length - 1];
+                if (!lastPt || Math.hypot(state.x - lastPt.x, state.y - lastPt.y, (state.z - (lastPt.z || 0))) >= 0.04) {
+                    state.trail.push({ x: state.x, y: state.y, z: state.z });
+                }
+
+                // 1) 득점 판정 (위에서 아래로 림 평면 y = HOOP_HEIGHT 통과 시, 골대 중심까지 진행 거리 s == hoopDistance 기준)
+                if (!state.scored && prevY >= HOOP_HEIGHT && state.y < HOOP_HEIGHT) {
+                    const ratio = (prevY - HOOP_HEIGHT) / (prevY - state.y);
+                    const crossS = prevS + (state.s - prevS) * ratio;
+                    const distFromCenter = Math.abs(crossS - params.hoopDistance);
+                    if (distFromCenter <= RIM_RADIUS - BALL_RADIUS * 0.45) {
+                        state.scored = true;
+                        state.celebrateTimer = 3.6; // 3.6초 동안 물만난 광어 댄스 발동!
+                        showStatusBanner('🐟 골인!! 물만난 광어 댄스 세리머니! 🎉', 'bg-emerald-500/90 text-white border border-emerald-300');
+                    }
+                }
+
+                // 2) 백보드 충돌 판정 (3D 월드 X 좌표 HOOP_WORLD_X + backboardX 기준)
+                const boardFrontX = HOOP_WORLD_X + backboardX - 0.03;
+                const boardBottomY = HOOP_HEIGHT - 0.175;
+                const boardTopY = HOOP_HEIGHT + 0.875;
+                if (state.vx > 0 && state.x + BALL_RADIUS >= boardFrontX && Math.abs(state.z) <= 0.90) {
+                    if (state.y >= boardBottomY && state.y <= boardTopY) {
+                        state.x = boardFrontX - BALL_RADIUS;
+                        state.s = Math.hypot(state.x - playerPos.x, state.z - playerPos.z);
+                        state.vx = -state.vx * RESTITUTION;
+                        state.hasCollided = true;
+                    }
+                }
+
+                // 3) 림 앞/뒤 모서리 충돌 판정 (슛 평면 상 골대 앞/뒤 림 단면 기준)
+                const rimPoints = [
+                    { rs: params.hoopDistance - RIM_RADIUS, ry: HOOP_HEIGHT },
+                    { rs: params.hoopDistance + RIM_RADIUS, ry: HOOP_HEIGHT }
+                ];
+                for (const rp of rimPoints) {
+                    const ds = state.s - rp.rs;
+                    const dy = state.y - rp.ry;
+                    const dist = Math.hypot(ds, dy);
+                    const minDist = BALL_RADIUS + 0.018;
+                    if (dist < minDist && dist > 0.0001) {
+                        const ns = ds / dist;
+                        const ny = dy / dist;
+                        state.s = rp.rs + ns * minDist;
+                        state.y = rp.ry + ny * minDist;
+                        const updatedXZ = getWorldXZFromProgress(state.s);
+                        state.x = updatedXZ.x;
+                        state.z = updatedXZ.z;
+
+                        const vn = state.vx * ns + state.vy * ny;
+                        if (vn < 0) {
+                            state.vx -= (1 + RESTITUTION) * vn * ns;
+                            state.vy -= (1 + RESTITUTION) * vn * ny;
+                            state.hasCollided = true;
+                        }
+                    }
+                }
+
+                // 4) 코트 바닥 충돌 판정
+                if (state.y <= BALL_RADIUS) {
+                    state.y = BALL_RADIUS;
+                    if (Math.abs(state.vy) > 0.65) {
+                        state.vy = -state.vy * RESTITUTION;
+                        state.vx *= 0.85;
+                        state.hasCollided = true;
+                    } else {
+                        state.vy = 0;
+                        state.vx = 0;
+                        state.status = 'finished';
+                        btnPause.disabled = true;
+                        btnStep.disabled = true;
+                        if (!state.scored) {
+                            showStatusBanner('🏀 슛 종료 · 각도나 속력을 조절해 다시 도전해보세요!', 'bg-slate-800/95 text-slate-200 border border-slate-600');
+                        }
+                    }
+                }
+
+                // 에너지 히스토리 기록
+                const vSq = state.vx * state.vx + state.vy * state.vy;
+                const ek = 0.5 * MASS * vSq;
+                const ep = MASS * GRAVITY * Math.max(0, state.y);
+                state.energyHistory.push({ t: state.t, ek, ep, etot: ek + ep });
+
+                updateDashboard();
+                sync3DObjects();
+            }
+
+            // -------------------------------------------------------------------------
+            // 7. 대시보드 UI 및 에너지 그래프 업데이트
+            // -------------------------------------------------------------------------
+            function showStatusBanner(msg, classes) {
+                statusBanner.textContent = msg;
+                statusBanner.className = `absolute top-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full font-bold text-xs sm:text-sm shadow-lg backdrop-blur-md transition-all duration-300 pointer-events-none ${classes}`;
+                statusBanner.classList.remove('hidden');
+            }
+
+            function hideStatusBanner() {
+                statusBanner.classList.add('hidden');
+            }
+
+            function updateDistanceZoneUI() {
+                let matched = null;
+                for (const z of COURT_ZONES) {
+                    if (Math.abs(params.hoopDistance - z.dist) < 0.08) {
+                        matched = z;
+                        break;
+                    }
+                }
+                const label = matched ? `${matched.label} (${params.hoopDistance.toFixed(2)}m)` : `사용자 지정 거리 (${params.hoopDistance.toFixed(2)}m)`;
+                overlayZoneBadge.textContent = label;
+                activeZoneDesc.textContent = label;
+
+                document.querySelectorAll('.preset-dist-btn').forEach(btn => {
+                    const btnDist = parseFloat(btn.dataset.dist);
+                    if (Math.abs(params.hoopDistance - btnDist) < 0.08) {
+                        btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+                        btn.classList.add('bg-orange-500/20', 'text-orange-300', 'border-orange-500');
+                    } else {
+                        btn.classList.remove('bg-orange-500/20', 'text-orange-300', 'border-orange-500');
+                        btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+                    }
+                });
+            }
+
+            function updateDashboard() {
+                overlayTime.textContent = state.t.toFixed(2);
+
+                const isPreLaunch = state.status === 'ready' || state.status === 'jumping';
+                const dispX = isPreLaunch ? 0 : state.s;
+                const dispY = isPreLaunch ? params.releaseHeight : state.y;
+                const v = Math.hypot(state.vx, state.vy);
+                const ek = 0.5 * MASS * v * v;
+                const ep = MASS * GRAVITY * Math.max(0, dispY);
+                const etot = ek + ep;
+
+                valEk.innerHTML = `${ek.toFixed(2)} <span class="text-xs font-normal">J</span>`;
+                valEp.innerHTML = `${ep.toFixed(2)} <span class="text-xs font-normal">J</span>`;
+                valEtot.innerHTML = `${etot.toFixed(2)} <span class="text-xs font-normal">J</span>`;
+
+                const pEk = etot > 0.0001 ? Math.round((ek / etot) * 100) : 0;
+                const pEp = etot > 0.0001 ? 100 - pEk : 0;
+
+                pctEk.textContent = pEk;
+                pctEp.textContent = pEp;
+                barTextEk.textContent = `${ek.toFixed(2)} J`;
+                barTextEp.textContent = `${ep.toFixed(2)} J`;
+
+                barEk.style.width = `${pEk}%`;
+                barEp.style.width = `${pEp}%`;
+                stackEk.style.width = `${pEk}%`;
+                stackEp.style.width = `${pEp}%`;
+
+                if (state.hasCollided) {
+                    conservationNote.textContent = '충돌로 일부 역학적 에너지 손실';
+                    conservationNote.className = 'text-amber-400 font-medium';
+                } else {
+                    conservationNote.textContent = '보존 중 (공기저항 무시)';
+                    conservationNote.className = 'text-emerald-400 font-medium';
+                }
+
+                valX.textContent = `${dispX.toFixed(2)} m`;
+                valY.textContent = `${dispY.toFixed(2)} m`;
+                valVx.textContent = `${state.vx.toFixed(2)} m/s`;
+                valVy.textContent = `${state.vy.toFixed(2)} m/s`;
+                valV.textContent = `${v.toFixed(2)} m/s`;
+
+                drawEnergyChart();
+            }
+
+            function drawEnergyChart() {
+                const rect = chartCanvas.parentElement.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                if (chartCanvas.width !== Math.floor(rect.width * dpr) || chartCanvas.height !== Math.floor(rect.height * dpr)) {
+                    chartCanvas.width = Math.floor(rect.width * dpr);
+                    chartCanvas.height = Math.floor(rect.height * dpr);
+                }
+                const w = chartCanvas.width;
+                const h = chartCanvas.height;
+                chartCtx.clearRect(0, 0, w, h);
+
+                const padL = 34 * dpr;
+                const padR = 10 * dpr;
+                const padT = 10 * dpr;
+                const padB = 18 * dpr;
+                const plotW = w - padL - padR;
+                const plotH = h - padT - padB;
+
+                // 배경 격자
+                chartCtx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+                chartCtx.lineWidth = 1 * dpr;
+                for (let i = 0; i <= 4; i++) {
+                    const gy = padT + (plotH * i) / 4;
+                    chartCtx.beginPath();
+                    chartCtx.moveTo(padL, gy);
+                    chartCtx.lineTo(w - padR, gy);
+                    chartCtx.stroke();
+                }
+
+                const hist = state.energyHistory;
+                const maxE = Math.max(35, ...hist.map(d => d.etot * 1.15));
+                const maxT = Math.max(1.8, state.t * 1.05);
+
+                // Y축 눈금 텍스트
+                chartCtx.fillStyle = '#94a3b8';
+                chartCtx.font = `${10 * dpr}px monospace`;
+                chartCtx.textAlign = 'right';
+                chartCtx.fillText(`${Math.round(maxE)}J`, padL - 4 * dpr, padT + 8 * dpr);
+                chartCtx.fillText(`${Math.round(maxE / 2)}J`, padL - 4 * dpr, padT + plotH / 2 + 3 * dpr);
+                chartCtx.fillText('0J', padL - 4 * dpr, padT + plotH);
+
+                if (hist.length < 2) return;
+
+                function plotCurve(key, color) {
+                    chartCtx.strokeStyle = color;
+                    chartCtx.lineWidth = 2 * dpr;
+                    chartCtx.beginPath();
+                    for (let i = 0; i < hist.length; i++) {
+                        const px = padL + (hist[i].t / maxT) * plotW;
+                        const py = padT + plotH - (hist[i][key] / maxE) * plotH;
+                        if (i === 0) chartCtx.moveTo(px, py);
+                        else chartCtx.lineTo(px, py);
+                    }
+                    chartCtx.stroke();
+                }
+
+                plotCurve('etot', '#34d399'); // 역학적 에너지 E (초록)
+                plotCurve('ek', '#fb7185');   // 운동 에너지 Ek (빨강)
+                plotCurve('ep', '#38bdf8');   // 퍼텐셜 에너지 Ep (파랑)
+            }
+
+            // -------------------------------------------------------------------------
+            // 8. 시뮬레이션 제어 (초기화 / 발사 / 일시정지 / 프레임 탐색)
+            // -------------------------------------------------------------------------
+            function resetSimulation() {
+                const rad = (params.angleDeg * Math.PI) / 180;
+                const vx0 = params.speed * Math.cos(rad);
+                const vy0 = params.speed * Math.sin(rad);
+
+                state.status = 'ready';
+                state.t = 0;
+                state.jumpTimer = 0;
+                state.celebrateTimer = 0;
+                state.s = 0;
+                state.x = playerPos.x;
+                state.y = params.releaseHeight;
+                state.z = playerPos.z;
+                state.vx = vx0;
+                state.vy = vy0;
+                state.spinAngle = 0;
+                state.trail = [];
+                state.apexPoint = null;
+                state.scored = false;
+                state.hasCollided = false;
+
+                const ek0 = 0.5 * MASS * params.speed * params.speed;
+                const ep0 = MASS * GRAVITY * params.releaseHeight;
+                state.energyHistory = [{ t: 0, ek: ek0, ep: ep0, etot: ek0 + ep0 }];
+
+                btnPause.disabled = true;
+                btnStep.disabled = true;
+                pauseText.textContent = '일시정지';
+                hideStatusBanner();
+
+                updateDistanceZoneUI();
+                update3DEnvironmentAndGuides();
+                sync3DObjects();
+                updateDashboard();
+            }
+
+            function launchSimulation() {
+                if (state.status !== 'ready') {
+                    resetSimulation();
+                }
+                state.status = 'jumping';
+                state.jumpTimer = 0;
+                // 타점이 높을수록 점프 체공 시간을 약간 더 길게 부여해 자연스러운 도약 연출
+                state.jumpDuration = params.releaseHeight > 1.58
+                    ? Math.min(0.48, 0.28 + (params.releaseHeight - 1.58) * 0.12)
+                    : 0.24;
+                btnPause.disabled = true;
+                btnStep.disabled = true;
+                pauseText.textContent = '일시정지';
+                hideStatusBanner();
+            }
+
+            // -------------------------------------------------------------------------
+            // 9. 이벤트 리스너 바인딩 (슬라이더, 프리셋, 3D 카메라 오빗, 조이스틱, 애니메이션 루프)
+            // -------------------------------------------------------------------------
+            function setPlayerDistanceAlongCurrentRay(newDist) {
+                const clamped = Math.min(15.0, Math.max(1.0, newDist));
+                // 현재 골대를 향하는 좌우 각도(aimYaw)를 유지하면서 거리만 조절
+                playerPos.x = HOOP_WORLD_X - Math.cos(playerPos.aimYaw) * clamped;
+                playerPos.z = -Math.sin(playerPos.aimYaw) * clamped;
+                updatePlayerDistanceAndAim(true);
+            }
+
+            function syncParameter(key, val, min, max, sliderEl, numEl) {
+                const clamped = Math.min(max, Math.max(min, val));
+                params[key] = clamped;
+                sliderEl.value = clamped;
+                numEl.value = key === 'distance' || key === 'releaseHeight' || key === 'hoopDistance'
+                    ? clamped.toFixed(2)
+                    : clamped.toFixed(1);
+                if (key === 'hoopDistance') {
+                    setPlayerDistanceAlongCurrentRay(clamped);
+                }
+                resetSimulation();
+            }
+
+            inputAngle.addEventListener('input', e => syncParameter('angleDeg', parseFloat(e.target.value), 15, 85, inputAngle, numAngle));
+            numAngle.addEventListener('change', e => syncParameter('angleDeg', parseFloat(e.target.value) || 52, 15, 85, inputAngle, numAngle));
+
+            inputSpeed.addEventListener('input', e => syncParameter('speed', parseFloat(e.target.value), 0, 16, inputSpeed, numSpeed));
+            numSpeed.addEventListener('change', e => syncParameter('speed', parseFloat(e.target.value) || 0, 0, 16, inputSpeed, numSpeed));
+
+            inputHeight.addEventListener('input', e => syncParameter('releaseHeight', parseFloat(e.target.value), 0.2, 3.5, inputHeight, numHeight));
+            numHeight.addEventListener('change', e => syncParameter('releaseHeight', parseFloat(e.target.value) || 2.1, 0.2, 3.5, inputHeight, numHeight));
+
+            inputDistance.addEventListener('input', e => {
+                syncParameter('hoopDistance', parseFloat(e.target.value), 1.0, 15.0, inputDistance, numDistance);
+                setCameraPreset(camControl.mode);
+            });
+            numDistance.addEventListener('change', e => {
+                syncParameter('hoopDistance', parseFloat(e.target.value) || 4.6, 1.0, 15.0, inputDistance, numDistance);
+                setCameraPreset(camControl.mode);
+            });
+
+            document.getElementById('btnDistMinus').addEventListener('click', () => {
+                syncParameter('hoopDistance', +(params.hoopDistance - 0.1).toFixed(2), 1.0, 15.0, inputDistance, numDistance);
+                setCameraPreset(camControl.mode);
+            });
+            document.getElementById('btnDistPlus').addEventListener('click', () => {
+                syncParameter('hoopDistance', +(params.hoopDistance + 0.1).toFixed(2), 1.0, 15.0, inputDistance, numDistance);
+                setCameraPreset(camControl.mode);
+            });
+
+            // 원클릭 코트 거리 프리셋 버튼
+            document.querySelectorAll('.preset-dist-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const d = parseFloat(btn.dataset.dist);
+                    setPlayerDistanceAlongCurrentRay(d);
+
+                    if (toggleAutoAimPreset.checked) {
+                        const ang = parseFloat(btn.dataset.angle);
+                        const spd = parseFloat(btn.dataset.speed);
+                        params.angleDeg = ang;
+                        params.speed = spd;
+                        inputAngle.value = ang;
+                        numAngle.value = ang.toFixed(1);
+                        inputSpeed.value = spd;
+                        numSpeed.value = spd.toFixed(1);
+                    }
+                    setCameraPreset(camControl.mode);
+                    resetSimulation();
+                });
+            });
+
+            // 시각화 토글 체크박스
+            [toggleTrail, toggleVectors, toggleAimGuide, toggleApexMarker].forEach(el => {
+                el.addEventListener('change', () => {
+                    update3DEnvironmentAndGuides();
+                    sync3DObjects();
+                });
+            });
+
+            // 카메라 시점 프리셋 버튼
+            document.querySelectorAll('.cam-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.cam-btn').forEach(b => {
+                        b.classList.remove('bg-sky-600', 'text-white', 'font-semibold');
+                        b.classList.add('text-slate-300');
+                    });
+                    btn.classList.add('bg-sky-600', 'text-white', 'font-semibold');
+                    btn.classList.remove('text-slate-300');
+                    setCameraPreset(btn.dataset.cam);
+                });
+            });
+
+            // 배속 버튼
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.speed-btn').forEach(b => {
+                        b.classList.remove('bg-orange-500', 'text-white', 'font-semibold');
+                        b.classList.add('text-slate-300');
+                    });
+                    btn.classList.add('bg-orange-500', 'text-white', 'font-semibold');
+                    btn.classList.remove('text-slate-300');
+                    state.timeScale = parseFloat(btn.dataset.speed);
+                });
+            });
+
+            // 메인 액션 버튼
+            btnLaunch.addEventListener('click', launchSimulation);
+
+            btnPause.addEventListener('click', () => {
+                if (state.status === 'running') {
+                    state.status = 'paused';
+                    pauseText.textContent = '계속 재생';
+                    btnStep.disabled = false;
+                } else if (state.status === 'paused') {
+                    state.status = 'running';
+                    pauseText.textContent = '일시정지';
+                    btnStep.disabled = true;
+                }
+            });
+
+            btnStep.addEventListener('click', () => {
+                if (state.status === 'paused') {
+                    stepPhysics(0.02);
+                }
+            });
+
+            btnReset.addEventListener('click', resetSimulation);
+
+            // -------------------------------------------------------------------------
+            // ★ 가상 아날로그 조이스틱 & 키보드(WASD/방향키) 캐릭터 코트 이동 컨트롤러
+            // -------------------------------------------------------------------------
+            const joystickBase = document.getElementById('joystickBase');
+            const joystickKnob = document.getElementById('joystickKnob');
+            let joyState = {
+                active: false,
+                pointerId: null,
+                vecX: 0, // -1 ~ +1 (좌우 입력)
+                vecY: 0  // -1 ~ +1 (상하 입력: 위쪽이 골대 방향 전진)
+            };
+            const keysPressed = {};
+
+            function updateJoystickVisual(nx, ny) {
+                const maxOffset = 32;
+                joystickKnob.style.transform = `translate(${nx * maxOffset}px, ${ny * maxOffset}px)`;
+            }
+
+            function handleJoystickMove(clientX, clientY) {
+                const rect = joystickBase.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const maxRadius = rect.width * 0.42;
+
+                let dx = clientX - centerX;
+                let dy = clientY - centerY;
+                const dist = Math.hypot(dx, dy);
+                if (dist > maxRadius) {
+                    dx = (dx / dist) * maxRadius;
+                    dy = (dy / dist) * maxRadius;
+                }
+                joyState.vecX = dx / maxRadius;
+                joyState.vecY = dy / maxRadius;
+                updateJoystickVisual(joyState.vecX, joyState.vecY);
+            }
+
+            joystickBase.addEventListener('pointerdown', e => {
+                e.stopPropagation();
+                joyState.active = true;
+                joyState.pointerId = e.pointerId;
+                joystickBase.setPointerCapture(e.pointerId);
+                handleJoystickMove(e.clientX, e.clientY);
+            });
+
+            joystickBase.addEventListener('pointermove', e => {
+                if (!joyState.active || e.pointerId !== joyState.pointerId) return;
+                e.stopPropagation();
+                handleJoystickMove(e.clientX, e.clientY);
+            });
+
+            function resetJoystick(e) {
+                if (e && joyState.pointerId !== null && e.pointerId !== joyState.pointerId) return;
+                joyState.active = false;
+                joyState.pointerId = null;
+                joyState.vecX = 0;
+                joyState.vecY = 0;
+                updateJoystickVisual(0, 0);
+            }
+            joystickBase.addEventListener('pointerup', resetJoystick);
+            joystickBase.addEventListener('pointercancel', resetJoystick);
+
+            window.addEventListener('keydown', e => {
+                if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+                keysPressed[e.code] = true;
+            });
+            window.addEventListener('keyup', e => {
+                keysPressed[e.code] = false;
+            });
+
+            function updatePlayerMovement(dt) {
+                let inX = joyState.vecX;
+                let inY = joyState.vecY;
+
+                // 키보드 입력 합산 (W/↑: 골대 쪽 전진, S/↓: 후진, A/←: 왼쪽, D/→: 오른쪽)
+                if (keysPressed['KeyW'] || keysPressed['ArrowUp']) inY -= 1;
+                if (keysPressed['KeyS'] || keysPressed['ArrowDown']) inY += 1;
+                if (keysPressed['KeyA'] || keysPressed['ArrowLeft']) inX -= 1;
+                if (keysPressed['KeyD'] || keysPressed['ArrowRight']) inX += 1;
+
+                const mag = Math.hypot(inX, inY);
+                if (mag < 0.08) {
+                    if (playerPos.isMoving) {
+                        playerPos.isMoving = false;
+                        updateCharacterPose();
+                    }
+                    return;
+                }
+
+                // 이동 입력 시 세리머니 중이었다면 즉시 달리기 자세로 전환
+                state.celebrateTimer = 0;
+
+                // 입력 정규화
+                const normX = mag > 1 ? inX / mag : inX;
+                const normY = mag > 1 ? inY / mag : inY;
+
+                // 현재 카메라 시점 기준으로 코트 위 전후좌우 이동 벡터 변환
+                const forwardX = -Math.sin(camControl.yaw);
+                const forwardZ = -Math.cos(camControl.yaw);
+                const rightX = Math.cos(camControl.yaw);
+                const rightZ = -Math.sin(camControl.yaw);
+
+                const moveSpeed = 4.6; // 초당 4.6m 달리기 속도
+                const worldVx = (forwardX * (-normY) + rightX * normX) * moveSpeed;
+                const worldVz = (forwardZ * (-normY) + rightZ * normX) * moveSpeed;
+
+                let nextX = playerPos.x + worldVx * dt;
+                let nextZ = playerPos.z + worldVz * dt;
+
+                // 코트 경계 제한 (골대 뒤쪽 및 사이드라인/하프라인 안쪽 유지)
+                nextX = Math.max(HOOP_WORLD_X - 14.5, Math.min(HOOP_WORLD_X - 0.8, nextX));
+                nextZ = Math.max(-7.2, Math.min(7.2, nextZ));
+
+                // 골대 림 직하방 최소 거리(1.0m) 보장
+                const dxHoop = HOOP_WORLD_X - nextX;
+                const dzHoop = -nextZ;
+                const distHoop = Math.hypot(dxHoop, dzHoop);
+                if (distHoop < 1.0 && distHoop > 0.001) {
+                    nextX = HOOP_WORLD_X - (dxHoop / distHoop) * 1.0;
+                    nextZ = (dzHoop / distHoop) * 1.0;
+                }
+
+                playerPos.x = nextX;
+                playerPos.z = nextZ;
+                playerPos.isMoving = true;
+                playerPos.runCycle += dt * 15;
+
+                // 이동한 위치에서 골대 중심까지의 거리와 좌우 조준각(aimYaw) 자동 업데이트
+                updatePlayerDistanceAndAim(true);
+
+                // 만약 이전 슛이 종료된 상태라면 즉시 새로운 위치에서 준비 상태로 전환
+                if (state.status === 'finished') {
+                    resetSimulation();
+                } else if (state.status === 'ready') {
+                    updateDistanceZoneUI();
+                    update3DEnvironmentAndGuides();
+                    sync3DObjects();
+                }
+            }
+
+            // 3D 마우스/터치 오빗 회전 및 휠 줌
+            simCanvas.addEventListener('mousedown', e => {
+                camControl.isDragging = true;
+                camControl.lastX = e.clientX;
+                camControl.lastY = e.clientY;
+            });
+            window.addEventListener('mousemove', e => {
+                if (!camControl.isDragging) return;
+                const dx = e.clientX - camControl.lastX;
+                const dy = e.clientY - camControl.lastY;
+                camControl.lastX = e.clientX;
+                camControl.lastY = e.clientY;
+
+                camControl.yaw -= dx * 0.007;
+                camControl.pitch = Math.max(0.03, Math.min(1.25, camControl.pitch + dy * 0.006));
+                updateCameraPosition();
+            });
+            window.addEventListener('mouseup', () => {
+                camControl.isDragging = false;
+            });
+            simCanvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                camControl.distance = Math.max(3.5, Math.min(28.0, camControl.distance + e.deltaY * 0.008));
+                updateCameraPosition();
+            }, { passive: false });
+
+            // 모바일 터치 시점 회전
+            simCanvas.addEventListener('touchstart', e => {
+                if (e.touches.length === 1) {
+                    camControl.isDragging = true;
+                    camControl.lastX = e.touches[0].clientX;
+                    camControl.lastY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+            simCanvas.addEventListener('touchmove', e => {
+                if (!camControl.isDragging || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - camControl.lastX;
+                const dy = e.touches[0].clientY - camControl.lastY;
+                camControl.lastX = e.touches[0].clientX;
+                camControl.lastY = e.touches[0].clientY;
+
+                camControl.yaw -= dx * 0.008;
+                camControl.pitch = Math.max(0.03, Math.min(1.25, camControl.pitch + dy * 0.007));
+                updateCameraPosition();
+            }, { passive: true });
+            simCanvas.addEventListener('touchend', () => {
+                camControl.isDragging = false;
+            });
+
+            // 반응형 3D 렌더러 크기 조정
+            function handleResize() {
+                const rect = canvasWrapper.getBoundingClientRect();
+                const width = Math.max(300, rect.width);
+                const height = Math.max(360, rect.height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height, false);
+                drawEnergyChart();
+            }
+            window.addEventListener('resize', handleResize);
+
+            // 메인 애니메이션 루프
+            let lastTimestamp = null;
+            function animateLoop(timestamp) {
+                if (lastTimestamp === null) lastTimestamp = timestamp;
+                const rawDt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+                lastTimestamp = timestamp;
+
+                // 조이스틱 / 키보드 캐릭터 이동 처리
+                updatePlayerMovement(rawDt);
+
+                // 물만난 광어 댄스 타이머 진행
+                if (state.celebrateTimer > 0) {
+                    state.celebrateTimer = Math.max(0, state.celebrateTimer - rawDt);
+                    updateCharacterPose();
+                }
+
+                if (state.status === 'jumping') {
+                    stepJump(rawDt * Math.max(0.5, state.timeScale));
+                } else if (state.status === 'running') {
+                    const scaledDt = rawDt * state.timeScale;
+                    const subSteps = 4;
+                    const subDt = scaledDt / subSteps;
+                    for (let i = 0; i < subSteps; i++) {
+                        if (state.status !== 'running') break;
+                        stepPhysics(subDt);
+                    }
+                }
+
+                // 최고점 마커 부드러운 회전
+                if (apexMarkerGroup.visible) {
+                    apexDiamond.rotation.y += 0.03;
+                }
+
+                renderer.render(scene, camera);
+                requestAnimationFrame(animateLoop);
+            }
+
+            // 초기 실행
+            window.onload = function () {
+                handleResize();
+                updatePlayerDistanceAndAim(true);
+                setCameraPreset('quarter');
+                resetSimulation();
+                requestAnimationFrame(animateLoop);
+            };
+        })();
+    </script>
+</body>
+</html>
+
+```
